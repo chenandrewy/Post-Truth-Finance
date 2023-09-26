@@ -4,17 +4,14 @@ rm(list = ls())
 library(tidyverse)
 library(data.table)
 library(ggplot2)
-library(zoo)
 library(extrafont)
 library(latex2exp)
 
 dir.create('../results/')
 
-
 MATBLUE = rgb(0,0.4470,0.7410)
 MATRED = rgb(0.8500, 0.3250, 0.0980)
 MATYELLOW = rgb(0.9290, 0.6940, 0.1250)
-
 
 chen_theme =   theme_minimal() +
   theme(
@@ -53,7 +50,6 @@ mu = rexp(n, 1/55.5); mu[!v] = 0 # Table 5, rho = 0.2, \lambda
 theta = mu / se
 theta_scatter = theta; theta_scatter[!v] = rnorm(sum(!v), 0, 0.1)
 mu_scatter = mu; mu_scatter[!v] = rnorm(sum(!v), 0, 0.1)*se
-pubnoise = runif(n)
 
 # Fabian Winkler's fast method for common correlations
 rho = 0.2
@@ -77,22 +73,17 @@ Z = c + e
 
 # assemble into data table
 dat = data.table(
-  Z, theta, v, pubnoise, theta_scatter
+  Z, theta, v, theta_scatter
 ) %>% 
   mutate(
     t = theta + Z
     , tabs = abs(t)
-    , pub = case_when(
-      tabs <= 1.96 ~ FALSE
-      , (1.96 < tabs) & (tabs <= 2.57) ~ pubnoise < 0.5
-      , 2.57 < tabs  ~ TRUE
-    )
     , mu = mu
     , mu_scatter = mu_scatter
   ) %>% 
   mutate(
     v = factor(
-      v, levels = c(TRUE,FALSE), labels = c('True Predictor', 'False Predictor')
+      v, levels = c(TRUE,FALSE), labels = c('True Factor', 'False Factor')
     )
   ) %>%   
   mutate(
@@ -108,7 +99,7 @@ datsum = dat %>%
   summarize(
     tselect_left = min(tselect), tselect_right = max(tselect)
     , Etselect = mean(tselect), Etheta = mean(theta), n = dplyr::n()
-    , nfalse = sum(v == 'False Predictor') 
+    , nfalse = sum(v == 'False Factor') 
   ) 
 
 
@@ -125,61 +116,23 @@ datsum = datsum %>%
 # find hurdles
 hurdle_05 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 5)])
 hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
-hurdle_bonf05 = qnorm(1-0.05/300/2)
+hurdle_bonf05 = qnorm(1-0.05/300/2) # assumes everything is published, as in HLZ's conclusion text
 
 
-# find pub stats
-pubstat = dat %>% 
-  filter(tselect>2) %>% 
-  summarize(
-    Et = mean(tselect)
-    , Etheta = mean(theta)
-    , FDR = mean(theta <= 0)    
-    , shrink = 1-mean(theta) / mean(tselect)
-  )
+# Find a subset for plotting ----------------------------------------------
 
-pubplot = tibble(
-  tselect = seq(2,10,0.1), theta = pubstat$Et, group = 'naive' 
-)  %>% rbind(
-  tibble(
-    tselect = seq(2,10,0.1), theta = pubstat$Etheta, group = 'shrinkage' 
-  )   
-)
-
-
-
-
-# Plot scatter bonf -------------------------------------------------------
-# for ease of presentation
-ntotal = 300/mean(dat$pub)
-set.seed(430)
-bonf_05 = qnorm(1-0.05/2/ntotal)
-
-# settings for both panels here
-nplot = 1500
-texty = 250
-textsize = 7
-
-linesize = 1.1
-
+nplot = 1500 # close to HLZ's estimate of "total factors" (ignoring unidentified scale)
 set.seed(11)
 small = dat[sample(1:n,nplot),]
-
-small %>% filter(tabs > hurdle_01) %>% summarize(sum(v=='False Predictor'))
-
-# holm algo
-holm_05 = small %>% select(tabs) %>% 
-  arrange(desc(tabs)) %>% 
-  mutate(
-    pval = 2*pnorm(-tabs)
-    , k = row_number()
-    , signif = pval < 0.05/(ntotal + 1 - k)
-  ) %>% 
-  filter(signif == F) %>% 
-  filter(row_number() == 1) %>% 
-  pull(tabs)
+small %>% filter(tabs > hurdle_01) %>% summarize(sum(v=='False Factor'))
 
 
+# plot sizing (shared by below)
+texty = 250
+textsize = 7
+linesize = 1.1
+
+# Plot scatter bonf -------------------------------------------------------
 
 p1 = ggplot(small, aes(x=tselect,y=mu_scatter)) +
   geom_point(aes(group = v, color = v, shape = v), size = 2.5) +
@@ -197,79 +150,74 @@ p1 = ggplot(small, aes(x=tselect,y=mu_scatter)) +
   xlab(TeX("|t-statistic|")) +
   ylab(TeX("Expected Return (bps p.m.)"))
 
-# HURDLES
+ggsave('../results/hlz-1.jpg', width = 12, height = 8)
+
+# FDR 1 
 p2 = p1 +
-  geom_vline(xintercept = 1.96, size = linesize) +
-  annotate(geom="text", label="Classical Hurdle", 
-           x=1.95, y=texty, vjust=-1, 
-           family = "Palatino Linotype", angle = 90, size = textsize, color = 'black'
-  ) +  
   geom_vline(xintercept = hurdle_01, size = linesize, color = MATRED, linetype = 'dotdash') +  
   annotate(geom="text", 
            label="FDR = 1%", 
            x=3, y=texty, vjust=-1, 
            family = "Palatino Linotype", angle = 90, size = textsize, color = MATRED
+  ) 
+
+ggsave('../results/hlz-2.jpg', width = 12, height = 8)
+
+# FDR 5
+p2b = p2 +
+  geom_vline(xintercept = hurdle_05, size = linesize, color = MATYELLOW, linetype = 'longdash') +  
+  annotate(geom="text", 
+           label="FDR = 5%", 
+           x=hurdle_05, y=texty, vjust=-0.3, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = MATYELLOW
+  ) 
+
+ggsave('../results/hlz-2b.jpg', width = 12, height = 8)
+
+p3 = p2b + 
+  geom_vline(xintercept = 1.96, size = linesize) +
+  annotate(geom="text", label="Classical Hurdle", 
+           x=1.95, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = 'black'
+  )
+
+ggsave('../results/hlz-3.jpg', width = 12, height = 8)
+
+p4 = p3 + 
+  geom_vline(xintercept = 1.96, size = linesize) +
+  annotate(geom="text", label="Classical Hurdle", 
+           x=1.95, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = 'black'
   ) +
-  geom_vline(xintercept = bonf_05, size = linesize, color = 'darkorchid', linetype = 'dotted') +
+  geom_vline(xintercept = hurdle_bonf05, size = linesize, color = 'darkorchid', linetype = 'dotted') +
   annotate(geom="text", 
            label=TeX("Bonferroni 5\\%"), 
-           x=holm_05, y=texty, vjust=-1, 
+           x=hurdle_bonf05, y=texty, vjust=-1, 
            family = "Palatino Linotype", angle = 90, size = textsize, color = 'darkorchid'
   ) 
 
-
-ggsave('../results/hlz-scatter-bonf.pdf', p2, width = 12, height = 8, device = cairo_pdf)
-
+ggsave('../results/hlz-4.jpg', width = 12, height = 8)
 
 
 
 # Plot post-truth ---------------------------------------------------------
 
-# for ease of presentation
-ntotal = 300/mean(dat$pub)
-set.seed(430)
-bonf_05 = qnorm(1-0.05/2/ntotal)
-
-# settings for both panels here
-nplot = 1500
-texty = 250
-textsize = 7
-
-linesize = 1.1
-
-set.seed(11)
-small = dat[sample(1:n,nplot),]
-
 # post-truth labels
 small = small %>% 
   mutate(
-    v = case_when(
-      tabs > bonf_05 ~ TRUE
-      , tabs <= bonf_05 ~ FALSE
+    v_hlz = case_when(
+      tabs > hurdle_bonf05 ~ TRUE
+      , tabs <= hurdle_bonf05 ~ FALSE
     )
   ) %>% mutate(
-    v = factor(
-      v, levels = c(TRUE,FALSE), labels = c('True Predictor', 'False Predictor')
+    v_hlz = factor(
+      v_hlz, levels = c(TRUE,FALSE), labels = c('True Factor', 'False Factor')
     )
   ) 
 
 
-# holm algo
-holm_05 = small %>% select(tabs) %>% 
-  arrange(desc(tabs)) %>% 
-  mutate(
-    pval = 2*pnorm(-tabs)
-    , k = row_number()
-    , signif = pval < 0.05/(ntotal + 1 - k)
-  ) %>% 
-  filter(signif == F) %>% 
-  filter(row_number() == 1) %>% 
-  pull(tabs)
-
-
-
 p1 = ggplot(small, aes(x=tselect,y=mu_scatter)) +
-  geom_point(aes(group = v, color = v, shape = v), size = 2.5) +
+  geom_point(aes(group = v_hlz, color = v_hlz, shape = v_hlz), size = 2.5) +
   scale_shape_manual(values = c(16, 1)) +
   scale_color_manual(values=c(MATBLUE, MATRED)) +
   coord_cartesian(xlim = c(-0.1,10), ylim = c(-0.5,300)) +
@@ -297,15 +245,84 @@ p2 = p1 +
            x=3, y=texty, vjust=-1, 
            family = "Palatino Linotype", angle = 90, size = textsize, color = MATRED
   ) +
-  geom_vline(xintercept = bonf_05, size = linesize, color = 'darkorchid', linetype = 'dotted') +
+  geom_vline(xintercept = hurdle_05, size = linesize, color = MATYELLOW, linetype = 'longdash') +  
+  annotate(geom="text", 
+           label="FDR = 5%", 
+           x=hurdle_05, y=texty, vjust=-0.3, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = MATYELLOW
+  ) +
+  geom_vline(xintercept = hurdle_bonf05, size = linesize, color = 'darkorchid', linetype = 'dotted') +
   annotate(geom="text", 
            label=TeX("Bonferroni 5\\%"), 
-           x=holm_05, y=texty, vjust=-1, 
+           x=hurdle_bonf05, y=texty, vjust=-1, 
            family = "Palatino Linotype", angle = 90, size = textsize, color = 'darkorchid'
   ) 
 
 
-ggsave('../results/hlz-post-truth.pdf', p2, width = 12, height = 8, device = cairo_pdf)
+ggsave('../results/hlz-post-truth.jpg', p2, width = 12, height = 8)
+
+
+# Plot post-truth, but now t_fdr_01 is the truth ---------------------------------------------------------
+
+# post-truth labels
+small = small %>% 
+  mutate(
+    v_hlz = case_when(
+      tabs > hurdle_05 ~ TRUE
+      , tabs <= hurdle_05 ~ FALSE
+    )
+  ) %>% mutate(
+    v_hlz = factor(
+      v_hlz, levels = c(TRUE,FALSE), labels = c('True Factor', 'False Factor')
+    )
+  ) 
+
+
+p1 = ggplot(small, aes(x=tselect,y=mu_scatter)) +
+  geom_point(aes(group = v_hlz, color = v_hlz, shape = v_hlz), size = 2.5) +
+  scale_shape_manual(values = c(16, 1)) +
+  scale_color_manual(values=c(MATBLUE, MATRED)) +
+  coord_cartesian(xlim = c(-0.1,10), ylim = c(-0.5,300)) +
+  scale_x_continuous(breaks = seq(-10,20,2)) +
+  scale_y_continuous(breaks = seq(0,500,50)) +  
+  chen_theme +
+  theme(
+    legend.position = c(.80, .15)
+    , panel.grid.major = element_blank()
+    , panel.grid.minor = element_blank()
+  ) +
+  xlab(TeX("|t-statistic|")) +
+  ylab(TeX("Expected Return (bps p.m.)"))
+
+# HURDLES
+p2 = p1 +
+  geom_vline(xintercept = 1.96, size = linesize) +
+  annotate(geom="text", label="Classical Hurdle", 
+           x=1.95, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = 'black'
+  ) +  
+  geom_vline(xintercept = hurdle_01, size = linesize, color = MATRED, linetype = 'dotdash') +  
+  annotate(geom="text", 
+           label="FDR = 1%", 
+           x=3, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = MATRED
+  ) +
+  geom_vline(xintercept = hurdle_05, size = linesize, color = MATYELLOW, linetype = 'longdash') +  
+  annotate(geom="text", 
+           label="FDR = 5%", 
+           x=hurdle_05, y=texty, vjust=-0.3, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = MATYELLOW
+  ) +
+  geom_vline(xintercept = hurdle_bonf05, size = linesize, color = 'darkorchid', linetype = 'dotted') +
+  annotate(geom="text", 
+           label=TeX("Bonferroni 5\\%"), 
+           x=hurdle_bonf05, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = 'darkorchid'
+  ) 
+
+
+ggsave('../results/hlz-post-truth-alt.jpg', p2, width = 12, height = 8)
+
 
 
 
