@@ -1,6 +1,10 @@
 # Setup -------------------------------------------------------------------
 rm(list = ls())
 
+# uncomment for pretty fonts
+# install.packages('extrafont')
+# extrafont::font_import()
+
 library(tidyverse)
 library(data.table)
 library(ggplot2)
@@ -19,14 +23,22 @@ chen_theme =   theme_minimal() +
     , panel.border = element_rect(colour = "black", fill=NA, size=1)
     
     # Font sizes
-    , axis.title.x = element_text(size = 26),
-    axis.title.y = element_text(size = 26),
-    axis.text.x = element_text(size = 22),
-    axis.text.y = element_text(size = 22),
-    legend.text = element_text(size = 18),
+    # , axis.title.x = element_text(size = 26),
+    # axis.title.y = element_text(size = 26),
+    # axis.text.x = element_text(size = 22),
+    # axis.text.y = element_text(size = 22),
+    # legend.text = element_text(size = 18),
+
+    , axis.title.x = element_text(size = 30),
+    axis.title.y = element_text(size = 30),
+    axis.text.x = element_text(size = 26),
+    axis.text.y = element_text(size = 26),
+    legend.text = element_text(size = 24),
     
     # Tweaking legend
-    legend.position = c(0.7, 0.8),
+    legend.position = c(.80, .15),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
     legend.text.align = 0,
     legend.background = element_rect(fill = "white", color = "black"),
     legend.margin = margin(t = 5, r = 20, b = 5, l = 5), 
@@ -34,12 +46,11 @@ chen_theme =   theme_minimal() +
     , legend.title = element_blank()    
   ) 
 
-
 # Simulate hlz ----------------------------------------------------------------
 
 # true / false labels (for v)
-label_true = 'True: [Expected Return]>0'
-label_false =  'False: [Expected Return]=0'
+label_true = 'True: [Exp Ret]>0'
+label_false =  'False: [Exp Ret]=0'
 
 nport = 1e4
 nsim = 500
@@ -130,7 +141,7 @@ hurdle_bonf05 = qnorm(1-0.05/300/2) # assumes everything is published, as in HLZ
 nplot = 1500 # close to HLZ's estimate of "total factors" (ignoring unidentified scale)
 set.seed(11)
 small = dat[sample(1:n,nplot),]
-small %>% filter(tabs > hurdle_01) %>% summarize(sum(v==label_false))
+small %>% filter(tabs > hurdle_01) %>% summarize(sum(v==label_false), n())
 
 
 # plot sizing (shared by below)
@@ -138,6 +149,108 @@ texty = 250
 textsize = 7
 linesize = 1.1
 
+
+# Plot slowly ----------------------------------------------------
+
+p0 = ggplot(small %>% 
+              filter(v==label_false), aes(x=tselect,y=mu_scatter)) +
+  scale_shape_manual(values = c(1)) +
+  scale_color_manual(values=c(MATRED)) +
+  coord_cartesian(xlim = c(-0.1,10), ylim = c(-0.5,300)) +
+  scale_x_continuous(breaks = seq(-10,20,2)) +
+  scale_y_continuous(breaks = seq(0,500,50)) +  
+  chen_theme +
+  xlab(TeX("|t-statistic|")) +
+  ylab(TeX("Expected Return (bps p.m.)")) +
+  theme(legend.position = 'none')
+
+ggsave('../results/slow-0.jpg', width = 12, height = 8)
+
+p1 = ggplot(small %>% 
+              filter(v==label_false), aes(x=tselect,y=mu_scatter)) +
+  geom_point(aes(group = v, color = v, shape = v), size = 2.5) +
+  scale_shape_manual(values = c(1)) +
+  scale_color_manual(values=c(MATRED)) +
+  coord_cartesian(xlim = c(-0.1,10), ylim = c(-0.5,300)) +
+  scale_x_continuous(breaks = seq(-10,20,2)) +
+  scale_y_continuous(breaks = seq(0,500,50)) +  
+  chen_theme +
+  xlab(TeX("|t-statistic|")) +
+  ylab(TeX("Expected Return (bps p.m.)")) +
+  theme(legend.position = 'none')
+
+ggsave('../results/slow-1.jpg', width = 12, height = 8)
+
+p2 =  ggplot(small, aes(x=tselect,y=mu_scatter)) +
+  geom_point(aes(group = v, color = v, shape = v), size = 2.5) + 
+  scale_shape_manual(values = c(16, 1)) +
+  scale_color_manual(values=c(MATBLUE, MATRED)) +
+  coord_cartesian(xlim = c(-0.1,10), ylim = c(-0.5,300)) +
+  scale_x_continuous(breaks = seq(-10,20,2)) +
+  scale_y_continuous(breaks = seq(0,500,50)) +  
+  chen_theme +
+  xlab(TeX("|t-statistic|")) +
+  ylab(TeX("Expected Return (bps p.m.)")) +
+  theme(legend.position = 'none')
+
+ggsave('../results/slow-2.jpg', width = 12, height = 8)
+
+p3 = p2 + chen_theme
+
+ggsave('../results/slow-3.jpg', width = 12, height = 8)
+
+p4 = p3 +
+  geom_vline(xintercept = hurdle_01, size = linesize, color = MATRED, linetype = 'dotdash') +  
+  annotate(geom="text", 
+           label="Discoveries ->", 
+           x=3+1.1, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 0, size = textsize, color = 'black'
+  ) 
+
+ggsave('../results/slow-4.jpg', width = 12, height = 8)
+
+p5 = p4 +  
+  annotate(geom="text", 
+           label="FDR = 1%", 
+           x=3, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = MATRED
+  ) 
+
+ggsave('../results/slow-5.jpg', width = 12, height = 8)
+
+
+# plot FDR 5 --------------------------------------------------------------
+
+p6 = p3 +
+  geom_vline(xintercept = hurdle_01, size = linesize, color = MATRED, linetype = 'dotdash') +
+  annotate(geom="text", 
+           label="FDR = 1%", 
+           x=3, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = MATRED
+  ) 
+
+ggsave('../results/slow-6.jpg', width = 12, height = 8)
+  
+
+p7 = p6 +
+  geom_vline(xintercept = hurdle_05, size = linesize, color = MATYELLOW, linetype = 'longdash') +  
+  annotate(geom="text", 
+           label="FDR = 5%", 
+           x=hurdle_05, y=texty, vjust=-0.3, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = MATYELLOW
+  ) 
+
+ggsave('../results/slow-7.jpg', width = 12, height = 8)
+
+p8 = p7 + 
+  geom_vline(xintercept = 1.96, size = linesize) +
+  annotate(geom="text", label="Classical Hurdle", 
+           x=1.95, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = 'black'
+  )
+
+ggsave('../results/slow-8.jpg', width = 12, height = 8)
+  
 
 # Plot big data -------------------------------------------------------
 
@@ -149,64 +262,25 @@ p1 = ggplot(small, aes(x=tselect,y=mu_scatter)) +
   scale_x_continuous(breaks = seq(-10,20,2)) +
   scale_y_continuous(breaks = seq(0,500,50)) +  
   chen_theme +
-  theme(
-    legend.position = c(.80, .15)
-    , panel.grid.major = element_blank()
-    , panel.grid.minor = element_blank()
-  ) +
   xlab(TeX("|t-statistic|")) +
   ylab(TeX("Expected Return (bps p.m.)"))
 
 ggsave('../results/hlz-1.jpg', width = 12, height = 8)
 
-# FDR 1 
-p2 = p1 +
-  geom_vline(xintercept = hurdle_01, size = linesize, color = MATRED, linetype = 'dotdash') +  
-  annotate(geom="text", 
-           label="FDR = 1%", 
-           x=3, y=texty, vjust=-1, 
-           family = "Palatino Linotype", angle = 90, size = textsize, color = MATRED
-  ) 
-
-ggsave('../results/hlz-2.jpg', width = 12, height = 8)
-
-# FDR 5
-p2b = p2 +
-  geom_vline(xintercept = hurdle_05, size = linesize, color = MATYELLOW, linetype = 'longdash') +  
-  annotate(geom="text", 
-           label="FDR = 5%", 
-           x=hurdle_05, y=texty, vjust=-0.3, 
-           family = "Palatino Linotype", angle = 90, size = textsize, color = MATYELLOW
-  ) 
-
-ggsave('../results/hlz-2b.jpg', width = 12, height = 8)
-
-p3 = p2b + 
+# classical hurdle only
+p5 = p1 + 
   geom_vline(xintercept = 1.96, size = linesize) +
   annotate(geom="text", label="Classical Hurdle", 
            x=1.95, y=texty, vjust=-1, 
            family = "Palatino Linotype", angle = 90, size = textsize, color = 'black'
   )
 
-ggsave('../results/hlz-3.jpg', width = 12, height = 8)
-
-p4 = p3 + 
-  geom_vline(xintercept = 1.96, size = linesize) +
-  annotate(geom="text", label="Classical Hurdle", 
-           x=1.95, y=texty, vjust=-1, 
-           family = "Palatino Linotype", angle = 90, size = textsize, color = 'black'
-  ) +
-  geom_vline(xintercept = hurdle_bonf05, size = linesize, color = 'darkorchid', linetype = 'dotted') +
-  annotate(geom="text", 
-           label=TeX("Bonferroni 5\\%"), 
-           x=hurdle_bonf05, y=texty, vjust=-1, 
-           family = "Palatino Linotype", angle = 90, size = textsize, color = 'darkorchid'
-  ) 
-
-ggsave('../results/hlz-4.jpg', width = 12, height = 8)
-
+ggsave('../results/hlz-classical-only.jpg', width = 12, height = 8)
 
 # Plot post-truth -------------------------------------------------------
+
+lab_hlz_false = '"False": Insignificant'
+lab_hlz_true = '"True": Significant'
 
 # post-truth labels
 small = small %>% 
@@ -217,7 +291,7 @@ small = small %>%
     )
   ) %>% mutate(
     v_hlz = factor(
-      v_hlz, levels = c(TRUE,FALSE), labels = c('True: Significant', 'False: Insignificant')
+      v_hlz, levels = c(TRUE,FALSE), labels = c(lab_hlz_true, lab_hlz_false)
     )
   ) %>% 
   mutate(
@@ -227,7 +301,7 @@ small = small %>%
     )
   ) %>% mutate(
     v_hlz_alt = factor(
-      v_hlz_alt, levels = c(TRUE,FALSE), labels = c('True: Significant', 'False: Insignificant')
+      v_hlz_alt, levels = c(TRUE,FALSE), labels = c(lab_hlz_true, lab_hlz_false)
     )
   ) 
 
